@@ -18,9 +18,11 @@
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
+#include "AP33772S.hpp"
 #include "stm32c0xx_hal.h"
 #include "stm32c0xx_hal_gpio.h"
 #include "MB85RCxxV.hpp"
+#include "stm32c0xx_hal_i2c.h"
 #include <cstdint>
 #include <stdint.h>
 /* Private includes ----------------------------------------------------------*/
@@ -47,8 +49,8 @@
 I2C_HandleTypeDef hi2c1;
 
 /* USER CODE BEGIN PV */
-MB85RC::MB85RC04V_C mb85rc04(&hi2c1, 0b000);
-
+MB85RC::MB85RC04V_C mb85rc04(&hi2c1, 0b010);
+AP33772S::AP33772S_C ap33772s(&hi2c1);
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -101,22 +103,42 @@ int main(void)
 
   /* USER CODE END 2 */
   uint32_t value = 0;
-  uint32_t des = 0;
-  uint32_t buf;
+  uint8_t des = 1;
+  uint8_t buf = 0;
+  uint8_t vreq[2] ={0};
+ 
+
+  // USB-Cコネクタを刺して起動した場合に何故か1回だとうまくいかないため2回発行する
+  for(int ii=0;ii<2;ii++){
+    HAL_Delay(250);
+    ap33772s.Read_SrcPDO();
+  }
+  uint8_t PDOIdx = ap33772s.FindPDO_Fixed(90, 1000, AP33772S::MaxWatt);
+  for(int ii=0;ii<2;ii++){
+    buf = ap33772s.ReqFixedPDO(PDOIdx, 90, 1000);
+    ap33772s.WaitResponse();
+  }
+  
+  HAL_I2C_Mem_Read(&hi2c1, 0x52<<1, AP33772S::REG::PD_MSGRLT>>8, 1, &buf, 1, 100);
+  HAL_I2C_Mem_Read(&hi2c1, 0x52<<1, AP33772S::REG::VREQ>>8, 1, vreq, 2, 100);
+
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   while (1)
   {
-    bool MatchFlg = true;
-    for(uint32_t ii=0;ii<16/sizeof(uint32_t);ii++) mb85rc04.write(ii*sizeof(ii), &ii, sizeof(ii));
+    
+    // HAL_I2C_Mem_Read(&hi2c1, 0x52<<1, AP33772S::REG::PD_MSGRLT>>8, 1, &buf, AP33772S::REG::PD_MSGRLT&0xff, 100);
+    HAL_Delay(10);
+  //   bool MatchFlg = true;
+  //   for(uint32_t ii=0;ii<16/sizeof(uint32_t);ii++) mb85rc04.write(ii*sizeof(ii), &ii, sizeof(ii));
       
-   for(uint32_t ii=0;ii<16/sizeof(uint32_t);ii++){
-      mb85rc04.read(ii*4, &buf, sizeof(buf));
-      if(ii!=buf) MatchFlg = false;
-    }
-    if(MatchFlg) HAL_GPIO_TogglePin(LD08_GPIO_Port, LD08_Pin);
-    HAL_GPIO_TogglePin(LD11_GPIO_Port, LD11_Pin);
-    HAL_Delay(50);
+  //  for(uint32_t ii=0;ii<16/sizeof(uint32_t);ii++){
+  //     mb85rc04.read(ii*4, &buf, sizeof(buf));
+  //     if(ii!=buf) MatchFlg = false;
+  //   }
+    // if(MatchFlg) HAL_GPIO_TogglePin(LD08_GPIO_Port, LD08_Pin);
+  //   HAL_GPIO_TogglePin(LD11_GPIO_Port, LD11_Pin);
+  //   HAL_Delay(50);
 
     //0b0000'0000'0110'0100
     //0b0000'0001'0110'0100

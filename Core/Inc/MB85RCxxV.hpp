@@ -17,8 +17,8 @@ namespace MB85RC {
 class MB85RCxxV_C{
   public:
     uint8_t  FeRAM_Base_Addr = 0b1010'0000;
-    uint8_t  FeRAM_Dev_Addr   = 0;
-    uint16_t FeRAM_Mem_Addr   = {0};
+    uint8_t  FeRAM_Dev_Addr  = 0;
+    uint16_t FeRAM_Mem_Addr  = 0;
     uint16_t FeRAM_Addr_Size = 1;
 
     uint8_t  A210 = 0b000;
@@ -57,7 +57,7 @@ class MB85RC04V_C: public MB85RCxxV_C{
   public:
   using MB85RCxxV_C::MB85RCxxV_C;
   void CalcAddress(uint16_t addr_, bool IsWrite = true){
-    FeRAM_Dev_Addr = FeRAM_Base_Addr | ((A210>>1)& 0b0000'0011) | ((addr_>>8)&0x01);
+    FeRAM_Dev_Addr = FeRAM_Base_Addr | ((A210<<1)& 0b0000'1110) | ((addr_>>8)&0x01);
     FeRAM_Mem_Addr = addr_&0x00ff;
   }
 };
