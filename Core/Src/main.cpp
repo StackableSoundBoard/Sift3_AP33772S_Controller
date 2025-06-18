@@ -106,12 +106,13 @@ int main(void)
   uint8_t des = 1;
   uint8_t buf = 0;
   uint8_t vreq[2] ={0};
- 
 
   // USB-Cコネクタを刺して起動した場合に何故か1回だとうまくいかないため2回発行する
   for(int ii=0;ii<2;ii++){
     HAL_Delay(250);
     ap33772s.Read_SrcPDO();
+    ap33772s.SetVout(false);
+    ap33772s.WaitResponse(15);
   }
   uint8_t PDOIdx = ap33772s.FindPDO_Fixed(90, 1000, AP33772S::MaxWatt);
   for(int ii=0;ii<2;ii++){
@@ -119,6 +120,8 @@ int main(void)
     ap33772s.WaitResponse();
   }
   
+  ap33772s.SetVout(true);
+  ap33772s.WaitResponse(15);
   HAL_I2C_Mem_Read(&hi2c1, 0x52<<1, AP33772S::REG::PD_MSGRLT>>8, 1, &buf, 1, 100);
   HAL_I2C_Mem_Read(&hi2c1, 0x52<<1, AP33772S::REG::VREQ>>8, 1, vreq, 2, 100);
 

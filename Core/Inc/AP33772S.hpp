@@ -135,6 +135,11 @@ namespace AP33772S {
         return res;
       }
 
+      void SetVout(bool IsEnable=true){
+        uint8_t msg = (IsEnable)? 0x00:0x01;
+        HAL_I2C_Mem_Write(hi2c, AP33772S_Base_Addr, REG::SYSTEM>>8, 1, &msg, REG::SYSTEM&0xff, 10);
+      }
+      
       uint8_t WaitResponse(int Maxloop=50){
         uint8_t res = 0x00;
         for(int ii=0;ii<Maxloop;Maxloop++){
