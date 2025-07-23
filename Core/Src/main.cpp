@@ -18,15 +18,15 @@
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
+
+/* Private includes ----------------------------------------------------------*/
+/* USER CODE BEGIN Includes */
 #include "AP33772S.hpp"
-#include "stm32c0xx_hal.h"
-#include "stm32c0xx_hal_gpio.h"
 #include "MB85RCxxV.hpp"
 #include "stm32c0xx_hal_i2c.h"
 #include <cstdint>
 #include <stdint.h>
-/* Private includes ----------------------------------------------------------*/
-/* USER CODE BEGIN Includes */
+#include "ntshell.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -48,6 +48,8 @@
 
 I2C_HandleTypeDef hi2c1;
 
+UART_HandleTypeDef huart2;
+
 /* USER CODE BEGIN PV */
 MB85RC::MB85RC04V_C mb85rc04(&hi2c1, 0b010);
 AP33772S::AP33772S_C ap33772s(&hi2c1);
@@ -57,6 +59,7 @@ AP33772S::AP33772S_C ap33772s(&hi2c1);
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
 static void MX_I2C1_Init(void);
+static void MX_USART2_UART_Init(void);
 /* USER CODE BEGIN PFP */
 
 /* USER CODE END PFP */
@@ -96,12 +99,12 @@ int main(void)
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
   MX_I2C1_Init();
+  MX_USART2_UART_Init();
   /* USER CODE BEGIN 2 */
 
   HAL_GPIO_WritePin(LD08_GPIO_Port, LD08_Pin, GPIO_PIN_RESET);
   HAL_GPIO_WritePin(LD11_GPIO_Port, LD11_Pin, GPIO_PIN_RESET);
 
-  /* USER CODE END 2 */
   uint32_t value = 0;
   uint8_t des = 1;
   uint8_t buf = 0;
@@ -116,7 +119,7 @@ int main(void)
   }
   uint8_t PDOIdx = ap33772s.FindPDO_Fixed(90, 1000, AP33772S::MaxWatt);
   for(int ii=0;ii<2;ii++){
-    buf = ap33772s.ReqFixedPDO(PDOIdx, 90, 1000);
+    buf = ap33772s.ReqFixed(PDOIdx, 90, 1000);
     ap33772s.WaitResponse();
   }
   
@@ -124,6 +127,8 @@ int main(void)
   ap33772s.WaitResponse(15);
   HAL_I2C_Mem_Read(&hi2c1, 0x52<<1, AP33772S::REG::PD_MSGRLT>>8, 1, &buf, 1, 100);
   HAL_I2C_Mem_Read(&hi2c1, 0x52<<1, AP33772S::REG::VREQ>>8, 1, vreq, 2, 100);
+
+  /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
@@ -236,6 +241,54 @@ static void MX_I2C1_Init(void)
   /* USER CODE BEGIN I2C1_Init 2 */
 
   /* USER CODE END I2C1_Init 2 */
+
+}
+
+/**
+  * @brief USART2 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_USART2_UART_Init(void)
+{
+
+  /* USER CODE BEGIN USART2_Init 0 */
+
+  /* USER CODE END USART2_Init 0 */
+
+  /* USER CODE BEGIN USART2_Init 1 */
+
+  /* USER CODE END USART2_Init 1 */
+  huart2.Instance = USART2;
+  huart2.Init.BaudRate = 115200;
+  huart2.Init.WordLength = UART_WORDLENGTH_8B;
+  huart2.Init.StopBits = UART_STOPBITS_1;
+  huart2.Init.Parity = UART_PARITY_NONE;
+  huart2.Init.Mode = UART_MODE_TX_RX;
+  huart2.Init.HwFlowCtl = UART_HWCONTROL_NONE;
+  huart2.Init.OverSampling = UART_OVERSAMPLING_16;
+  huart2.Init.OneBitSampling = UART_ONE_BIT_SAMPLE_DISABLE;
+  huart2.Init.ClockPrescaler = UART_PRESCALER_DIV1;
+  huart2.AdvancedInit.AdvFeatureInit = UART_ADVFEATURE_NO_INIT;
+  if (HAL_UART_Init(&huart2) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  if (HAL_UARTEx_SetTxFifoThreshold(&huart2, UART_TXFIFO_THRESHOLD_1_8) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  if (HAL_UARTEx_SetRxFifoThreshold(&huart2, UART_RXFIFO_THRESHOLD_1_8) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  if (HAL_UARTEx_DisableFifoMode(&huart2) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN USART2_Init 2 */
+
+  /* USER CODE END USART2_Init 2 */
 
 }
 

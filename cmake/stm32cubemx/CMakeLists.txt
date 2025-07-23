@@ -10,6 +10,8 @@ set(MX_Defines_Syms
 
 # STM32CubeMX generated include paths
 set(MX_Include_Dirs
+    ${CMAKE_SOURCE_DIR}/nt-shell/lib/core
+    ${CMAKE_SOURCE_DIR}/nt-shell/lib/core/util    
     ${CMAKE_SOURCE_DIR}/Core/Inc
     ${CMAKE_SOURCE_DIR}/Drivers/STM32C0xx_HAL_Driver/Inc
     ${CMAKE_SOURCE_DIR}/Drivers/STM32C0xx_HAL_Driver/Inc/Legacy
@@ -17,14 +19,23 @@ set(MX_Include_Dirs
     ${CMAKE_SOURCE_DIR}/Drivers/CMSIS/Include
 )
 
+file(GLOB_RECURSE nt_shell_srcs
+    ${CMAKE_SOURCE_DIR}/nt-shell/lib/*.c
+    ${CMAKE_SOURCE_DIR}/nt-shell/lib/util/*.c
+)
+
+set(nt_shell_srcs ${nt_shell_srcs})
+
 # STM32CubeMX generated application sources
 set(MX_Application_Src
+    ${CMAKE_SOURCE_DIR}/Core/Src/AP33772S.cpp
     ${CMAKE_SOURCE_DIR}/Core/Src/main.cpp
     ${CMAKE_SOURCE_DIR}/Core/Src/stm32c0xx_it.c
     ${CMAKE_SOURCE_DIR}/Core/Src/stm32c0xx_hal_msp.c
     ${CMAKE_SOURCE_DIR}/Core/Src/sysmem.c
     ${CMAKE_SOURCE_DIR}/Core/Src/syscalls.c
     ${CMAKE_SOURCE_DIR}/startup_stm32c071xx.s
+    ${nt_shell_srcs}
 )
 
 # STM32 HAL/LL Drivers
@@ -46,6 +57,8 @@ set(STM32_Drivers_Src
     ${CMAKE_SOURCE_DIR}/Drivers/STM32C0xx_HAL_Driver/Src/stm32c0xx_hal_i2c_ex.c
     ${CMAKE_SOURCE_DIR}/Drivers/STM32C0xx_HAL_Driver/Src/stm32c0xx_hal_tim.c
     ${CMAKE_SOURCE_DIR}/Drivers/STM32C0xx_HAL_Driver/Src/stm32c0xx_hal_tim_ex.c
+    ${CMAKE_SOURCE_DIR}/Drivers/STM32C0xx_HAL_Driver/Src/stm32c0xx_hal_uart.c
+    ${CMAKE_SOURCE_DIR}/Drivers/STM32C0xx_HAL_Driver/Src/stm32c0xx_hal_uart_ex.c
 )
 
 # Drivers Midllewares

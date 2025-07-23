@@ -79,8 +79,8 @@ namespace AP33772S {
     }
 
     bool Eval_ADPO(uint16_t Voltage100mV_, uint32_t CurrentmA_){
-      uint16_t MinVoltage = (PeakCurrent_VoltageMin==1)? 33 : 50;
-      return (Detect)&(Type==ADPO)&(MinVoltage<=Voltage100mV_)&&(Voltage100mV_<=MinVoltage)&(CurrentmA_<=MaxCurrent(CurrentMax));
+      uint16_t VoltageMin = (PeakCurrent_VoltageMin==1)? 33 : 50;
+      return (Detect)&(Type==ADPO)&(VoltageMin<=Voltage100mV_)&&(Voltage100mV_<=VoltageMax)&(CurrentmA_<=MaxCurrent(CurrentMax));
     }
   }SRCPDO_T;
 
@@ -96,6 +96,7 @@ namespace AP33772S {
       SRCPDO_T SrcPDO_List[14];
       ReqMsg_T ReqPDO_MSG;
       I2C_HandleTypeDef* hi2c;
+      bool LastCMD_Sucess = false;
 
     public:
       AP33772S_C(I2C_HandleTypeDef *hi2c_){
@@ -103,51 +104,19 @@ namespace AP33772S {
         for(int ii=0;ii<14;ii++) SrcPDO_List[ii].Clear();
       }
 
-      void Read_SrcPDO(){
-        HAL_I2C_Mem_Read(hi2c, AP33772S_Base_Addr, REG::SRCPDO>>8, 1, (uint8_t*)SrcPDO_List, REG::SRCPDO&0xff, 10);
-      }
+      // AP33772S Function
+      void Read_SrcPDO();
+      void SetVout(bool IsEnable);
 
-      uint16_t Current2Idx(uint16_t ReqCurrentmA_){return ReqCurrentmA_/250-4;};
+      // Util function
+      uint16_t Current2Idx(uint16_t ReqCurrentmA_);
+      uint8_t  WaitResponse(int Maxloop=30);
 
-      uint8_t FindPDO_Fixed(uint16_t ReqVoltage100mV_, uint16_t ReqCurrentmA_, PDOFind_Mode Mode){
-        uint8_t WattIdx = 0xff;
-        for(int ii=0;ii<14;ii++){
-          if(SrcPDO_List[ii].Eval_FixedPDO(ReqVoltage100mV_, ReqCurrentmA_)){
-            uint32_t CurrentWatt = SrcPDO_List[ii].MaxCurrent(SrcPDO_List[ii].CurrentMax)*SrcPDO_List[ii].VoltageMax;
-            uint32_t OldWatt     = SrcPDO_List[WattIdx].MaxCurrent(SrcPDO_List[WattIdx].CurrentMax)*SrcPDO_List[WattIdx].VoltageMax;
-            if(WattIdx==0xff) WattIdx = ii;
-            else if ((Mode==MaxWatt)&(CurrentWatt>OldWatt)) WattIdx = ii;
-            else if ((Mode==MinWatt)&(CurrentWatt<OldWatt)) WattIdx = ii;
-          }
-        }
-        return (WattIdx==0xff)?0xff : WattIdx+1;
-      }
+      // FInd PDO Function
+      uint8_t FindPDO_Fixed(uint16_t ReqVoltage100mV_, uint16_t ReqCurrentmA_, PDOFind_Mode Mode);
+      uint8_t FindPDO_ADPO(uint16_t ReqVoltage100mV_, uint16_t ReqCurrentmA_, PDOFind_Mode Mode);
+      uint8_t ReqFixed(uint8_t SRCPDOIdx_, uint16_t ReqVoltage100mV_, uint16_t ReqCurrentmA_);
+      uint8_t ReqAPDO(uint8_t SRCPDOIdx_, uint16_t ReqVoltage100mV_, uint16_t ReqCurrentmA_);      
 
-      uint8_t ReqFixedPDO(uint8_t SRCPDOIdx_, uint16_t ReqVoltage100mV_, uint16_t ReqCurrentmA_){
-        uint8_t res = 0x00;
-        ReqPDO_MSG.POD_Index = SRCPDOIdx_;
-        ReqPDO_MSG.CURRENT_SEL = Current2Idx(ReqCurrentmA_);
-        ReqPDO_MSG.VOLTAGE_SEL = 0;
-        //HAL_I2C_Mem_Write(hi2c, AP33772S_Base_Addr, REG::VSELMIN>>8, 1, (uint8_t*), uint16_t Size, uint32_t Timeout)
-
-        HAL_I2C_Mem_Write(hi2c, AP33772S_Base_Addr, REG::PD_REQMSG>>8, 1, (uint8_t*)&ReqPDO_MSG, REG::PD_REQMSG&0xff, 10);
-        HAL_I2C_Mem_Read(hi2c, AP33772S_Base_Addr, REG::PD_MSGRLT>>8, 1, &res, REG::PD_MSGRLT&0xff, 100);
-        return res;
-      }
-
-      void SetVout(bool IsEnable=true){
-        uint8_t msg = (IsEnable)? 0x00:0x01;
-        HAL_I2C_Mem_Write(hi2c, AP33772S_Base_Addr, REG::SYSTEM>>8, 1, &msg, REG::SYSTEM&0xff, 10);
-      }
-      
-      uint8_t WaitResponse(int Maxloop=50){
-        uint8_t res = 0x00;
-        for(int ii=0;ii<Maxloop;Maxloop++){
-          HAL_Delay(5);
-          HAL_I2C_Mem_Read(hi2c, AP33772S_Base_Addr, REG::PD_MSGRLT>>8, 1, &res, REG::PD_MSGRLT&0xff, 100);
-          if(res&0x01) break;
-        }
-        return res;
-      }
     };
 }
