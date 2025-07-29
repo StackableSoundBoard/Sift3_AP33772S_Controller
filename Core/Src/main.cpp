@@ -26,7 +26,9 @@
 #include "stm32c0xx_hal_i2c.h"
 #include <cstdint>
 #include <stdint.h>
+#include <stdio.h>
 #include "ntshell.h"
+#include "stm32c0xx_hal_uart.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -49,6 +51,8 @@
 I2C_HandleTypeDef hi2c1;
 
 UART_HandleTypeDef huart2;
+DMA_HandleTypeDef hdma_usart2_rx;
+DMA_HandleTypeDef hdma_usart2_tx;
 
 /* USER CODE BEGIN PV */
 MB85RC::MB85RC04V_C mb85rc04(&hi2c1, 0b010);
@@ -58,6 +62,7 @@ AP33772S::AP33772S_C ap33772s(&hi2c1);
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
+static void MX_DMA_Init(void);
 static void MX_I2C1_Init(void);
 static void MX_USART2_UART_Init(void);
 /* USER CODE BEGIN PFP */
@@ -98,6 +103,7 @@ int main(void)
 
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
+  MX_DMA_Init();
   MX_I2C1_Init();
   MX_USART2_UART_Init();
   /* USER CODE BEGIN 2 */
@@ -132,11 +138,14 @@ int main(void)
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
+  int cc = 0;
+  char msg[32] = {0};
   while (1)
   {
-    
+    sprintf(msg, "STM32 uart %0d", cc);
     // HAL_I2C_Mem_Read(&hi2c1, 0x52<<1, AP33772S::REG::PD_MSGRLT>>8, 1, &buf, AP33772S::REG::PD_MSGRLT&0xff, 100);
-    HAL_Delay(10);
+    HAL_UART_Transmit(&huart2, (uint8_t*)msg, 32, 25);
+    HAL_Delay(1000);
   //   bool MatchFlg = true;
   //   for(uint32_t ii=0;ii<16/sizeof(uint32_t);ii++) mb85rc04.write(ii*sizeof(ii), &ii, sizeof(ii));
       
@@ -289,6 +298,25 @@ static void MX_USART2_UART_Init(void)
   /* USER CODE BEGIN USART2_Init 2 */
 
   /* USER CODE END USART2_Init 2 */
+
+}
+
+/**
+  * Enable DMA controller clock
+  */
+static void MX_DMA_Init(void)
+{
+
+  /* DMA controller clock enable */
+  __HAL_RCC_DMA1_CLK_ENABLE();
+
+  /* DMA interrupt init */
+  /* DMA1_Channel1_IRQn interrupt configuration */
+  HAL_NVIC_SetPriority(DMA1_Channel1_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(DMA1_Channel1_IRQn);
+  /* DMA1_Channel2_3_IRQn interrupt configuration */
+  HAL_NVIC_SetPriority(DMA1_Channel2_3_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(DMA1_Channel2_3_IRQn);
 
 }
 

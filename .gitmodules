@@ -1,0 +1,3 @@
+[submodule "nt-shell"]
+	path = nt-shell
+	url = git@github.com:StackableSoundBoard/nt-shell.git

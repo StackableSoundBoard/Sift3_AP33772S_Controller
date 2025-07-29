@@ -10,8 +10,8 @@ set(MX_Defines_Syms
 
 # STM32CubeMX generated include paths
 set(MX_Include_Dirs
-    ${CMAKE_SOURCE_DIR}/nt-shell/lib/core
-    ${CMAKE_SOURCE_DIR}/nt-shell/lib/core/util    
+    ${CMAKE_SOURCE_DIR}/nt-shell/src/lib/core
+    ${CMAKE_SOURCE_DIR}/nt-shell/src/lib/core/util    
     ${CMAKE_SOURCE_DIR}/Core/Inc
     ${CMAKE_SOURCE_DIR}/Drivers/STM32C0xx_HAL_Driver/Inc
     ${CMAKE_SOURCE_DIR}/Drivers/STM32C0xx_HAL_Driver/Inc/Legacy
@@ -20,8 +20,8 @@ set(MX_Include_Dirs
 )
 
 file(GLOB_RECURSE nt_shell_srcs
-    ${CMAKE_SOURCE_DIR}/nt-shell/lib/*.c
-    ${CMAKE_SOURCE_DIR}/nt-shell/lib/util/*.c
+    ${CMAKE_SOURCE_DIR}/nt-shell/src/lib/*.c
+    ${CMAKE_SOURCE_DIR}/nt-shell/src/lib/util/*.c
 )
 
 set(nt_shell_srcs ${nt_shell_srcs})
@@ -98,6 +98,7 @@ target_link_libraries(${CMAKE_PROJECT_NAME} ${MX_LINK_LIBS})
 set_target_properties(${CMAKE_PROJECT_NAME} PROPERTIES ADDITIONAL_CLEAN_FILES ${CMAKE_PROJECT_NAME}.map)
 
 # Validate that STM32CubeMX code is compatible with C standard
-if((CMAKE_C_STANDARD EQUAL 90) OR (CMAKE_C_STANDARD EQUAL 99))
-    message(ERROR "Generated code requires C11 or higher")
+# Validate that STM32CubeMX code is compatible with C standard
+if(CMAKE_C_STANDARD LESS 17)
+    message(ERROR "Generated code requires C17 or higher")
 endif()
