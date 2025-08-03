@@ -10,7 +10,7 @@
 */
 
 #pragma once
-#include "stm32c0xx_hal.h"
+#include "stm32c0xx_hal_def.h"
 #include <cstdint>
 
 namespace MB85RC {
@@ -57,6 +57,7 @@ class MB85RC04V_C: public MB85RCxxV_C{
   public:
   using MB85RCxxV_C::MB85RCxxV_C;
   void CalcAddress(uint16_t addr_, bool IsWrite = true){
+    UNUSED(IsWrite);
     FeRAM_Dev_Addr = FeRAM_Base_Addr | ((A210<<1)& 0b0000'1110) | ((addr_>>8)&0x01);
     FeRAM_Mem_Addr = addr_&0x00ff;
   }

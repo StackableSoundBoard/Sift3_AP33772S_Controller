@@ -1,8 +1,7 @@
 #pragma once
 #include "stm32c0xx_hal.h"
-#include "cstdint"
 #include "stm32c0xx_hal_i2c.h"
-#include <cstdint>
+#include <stdint.h>
 
 namespace AP33772S {
   namespace REG {
@@ -72,7 +71,7 @@ namespace AP33772S {
       Type = 0;
       Detect = 0;
     };
-    uint32_t MaxCurrent(uint16_t currentidx){return currentidx*1250-10;};
+    uint32_t MaxCurrent(uint16_t currentidx){return currentidx*250+1000;};
 
     bool Eval_FixedPDO(uint16_t Voltage100mV_, uint32_t CurrentmA_){
       return (Detect)&(Type==FixedPDO)&(VoltageMax == Voltage100mV_)&(CurrentmA_<=MaxCurrent(CurrentMax));
@@ -93,7 +92,7 @@ namespace AP33772S {
   class AP33772S_C{
     private:  
       uint8_t AP33772S_Base_Addr = 0x52<<1;
-      SRCPDO_T SrcPDO_List[14];
+      int SrcPDO_Num;
       ReqMsg_T ReqPDO_MSG;
       I2C_HandleTypeDef* hi2c;
       bool LastCMD_Sucess = false;
@@ -102,7 +101,10 @@ namespace AP33772S {
       AP33772S_C(I2C_HandleTypeDef *hi2c_){
         hi2c = hi2c_;
         for(int ii=0;ii<14;ii++) SrcPDO_List[ii].Clear();
+        SrcPDO_Num = 0;
       }
+
+      SRCPDO_T SrcPDO_List[14];
 
       // AP33772S Function
       void Read_SrcPDO();
@@ -113,9 +115,10 @@ namespace AP33772S {
       uint8_t  WaitResponse(int Maxloop=30);
 
       // FInd PDO Function
-      uint8_t FindPDO_Fixed(uint16_t ReqVoltage100mV_, uint16_t ReqCurrentmA_, PDOFind_Mode Mode);
-      uint8_t FindPDO_ADPO(uint16_t ReqVoltage100mV_, uint16_t ReqCurrentmA_, PDOFind_Mode Mode);
-      uint8_t ReqFixed(uint8_t SRCPDOIdx_, uint16_t ReqVoltage100mV_, uint16_t ReqCurrentmA_);
+      uint8_t FindPDO_Fixed(uint16_t Req_MinVoltage100mV_, uint16_t Req_MaxVoltage100mV_, uint16_t ReqCurrentmA_, PDOFind_Mode Mode);
+      uint8_t FindPDO_ADPO(uint16_t Req_MinVoltage100mV_, uint16_t Req_MaxVoltage100mV_, uint16_t ReqCurrentmA_, PDOFind_Mode Mode, uint16_t &ReqVoltage100mV_);
+      int     FindPDO_Nums();
+      uint8_t ReqFixed(uint8_t SRCPDOIdx_,  uint16_t ReqCurrentmA_);
       uint8_t ReqAPDO(uint8_t SRCPDOIdx_, uint16_t ReqVoltage100mV_, uint16_t ReqCurrentmA_);      
 
     };

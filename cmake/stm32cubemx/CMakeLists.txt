@@ -11,7 +11,7 @@ set(MX_Defines_Syms
 # STM32CubeMX generated include paths
 set(MX_Include_Dirs
     ${CMAKE_SOURCE_DIR}/nt-shell/src/lib/core
-    ${CMAKE_SOURCE_DIR}/nt-shell/src/lib/core/util    
+    ${CMAKE_SOURCE_DIR}/nt-shell/src/lib/util    
     ${CMAKE_SOURCE_DIR}/Core/Inc
     ${CMAKE_SOURCE_DIR}/Drivers/STM32C0xx_HAL_Driver/Inc
     ${CMAKE_SOURCE_DIR}/Drivers/STM32C0xx_HAL_Driver/Inc/Legacy
@@ -20,7 +20,7 @@ set(MX_Include_Dirs
 )
 
 file(GLOB_RECURSE nt_shell_srcs
-    ${CMAKE_SOURCE_DIR}/nt-shell/src/lib/*.c
+    ${CMAKE_SOURCE_DIR}/nt-shell/src/lib/core/*.c
     ${CMAKE_SOURCE_DIR}/nt-shell/src/lib/util/*.c
 )
 

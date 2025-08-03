@@ -23,21 +23,47 @@
 /* USER CODE BEGIN Includes */
 #include "AP33772S.hpp"
 #include "MB85RCxxV.hpp"
-#include "stm32c0xx_hal_i2c.h"
-#include <cstdint>
 #include <stdint.h>
 #include <stdio.h>
+#include <string.h>
+#include <cstdlib>
+
+#include "ntlibc.h"
+#include "ntopt.h"
 #include "ntshell.h"
-#include "stm32c0xx_hal_uart.h"
+#include "stm32c0xx_hal_def.h"
+#include "stm32c0xx_hal_gpio.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
 /* USER CODE BEGIN PTD */
+ntshell_t ntshell;
+typedef int (*USRCMDFUNC)(int argc, char **argv);
 
+typedef struct{
+  bool isHidden;
+  char *cmd;
+  char *description;
+  USRCMDFUNC func;
+} CMD_Table_T;  
+
+typedef struct{
+  uint16_t Req_MinVoltage;
+  uint16_t Req_MaxVoltage;
+  uint16_t Req_Current;
+} Request_PDO_T;
 /* USER CODE END PTD */
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
+#define UNUSED_VARIABLE(N)  do { (void)(N); } while (0)
+#define EEPROM_START_ADDRESS  ((uint32_t)0x0801E000)
+#ifndef GIT_COMMIT_HASH
+  #define GIT_COMMIT_HASH "Unknown"
+#endif
+
+uint8_t UART_Rx_Buffer[64] = {0};
+uint8_t UART_Tx_Buffer[64] = {0};
 
 /* USER CODE END PD */
 
@@ -65,13 +91,175 @@ static void MX_GPIO_Init(void);
 static void MX_DMA_Init(void);
 static void MX_I2C1_Init(void);
 static void MX_USART2_UART_Init(void);
+static void MX_FLASH_Init(void);
 /* USER CODE BEGIN PFP */
 
+static int CMD_help(int argc, char **argv);
+static int CMD_info(int argc, char **argv);
+static int CMD_CRLF(int argc, char **argv);
+static int CMD_EEPROM_Read(int argc, char **argv);
+static int CMD_AS33772S_GetSRCPDOList(int argc, char **argv);
+// static int CMD_AS33772S_GetDevPDOList(int argc, char **argv);
+// static int CMD_AS33772S_SetDevPDO    (int argc, char **argv);
+// static int CMD_AS33772S_SetDevPDOList(int argc, char **argv);
+// static int CMD_AS33772S_SendRequest  (int argc, char **argv);
+// static int CMD_AS33772S_GetStatus    (int argc, char **argv);
+// static int CMD_AS33772S_SaveEEPROM   (int argc, char **argv);
+
+static int func_write(const char *buf, int cnt, void *extobj);
+static int usrcmd_ntopt_callback(int argc, char **argv, void *extobj);
+static int func_callback(const char *text, void *extobj);
+void       HAL_UARTEx_RxEventCallback(UART_HandleTypeDef *huart, uint16_t Size);
+
+static const CMD_Table_T CommandList[] = {
+    { true,  (char*)"help", (char*)"Print help menu", CMD_help},
+    { false, (char*)"info", (char*)"Print Device information", CMD_info},
+    { false, (char*)"CRLF", (char*)"Set CR/LF Option", CMD_CRLF},    
+    { true,  (char*)"EEPR", (char*)"Load EEPROM Data",CMD_EEPROM_Read},
+    { false, (char*)"SPDO", (char*)"Show Source PDO data",CMD_AS33772S_GetSRCPDOList},
+
+};
+
+const char GIT_HASH[] = GIT_COMMIT_HASH;
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
 
+static int func_write(const char *buf, int cnt, void *extobj){
+  UNUSED(extobj);
+  return  (HAL_UART_Transmit(&huart2, (uint8_t*)buf, cnt, HAL_MAX_DELAY)==HAL_OK)? cnt : 0;
+}
+
+static int usrcmd_ntopt_callback(int argc, char **argv, void *extobj){
+    UNUSED(extobj);
+    if (argc == 0) {
+        return 0;
+    }
+    const CMD_Table_T *p = &CommandList[0];
+    for (unsigned int i = 0; i < sizeof(CommandList) / sizeof(CommandList[0]); i++) {
+        if (ntlibc_strcmp((const char *)argv[0], p->cmd) == 0) {
+            return p->func(argc, argv);
+        }
+        p++;
+    }
+    // uart_puts("Unknown command found.\r\n");
+    return 0;
+}
+
+
+static int func_callback(const char *text, void *extobj){
+  ntshell_t *ntshell = (ntshell_t *)extobj;
+  UNUSED(ntshell);
+  UNUSED(extobj);
+  if (ntlibc_strlen(text) > 0){
+    ntopt_parse(text, usrcmd_ntopt_callback, 0);
+    // snprintf(msg, sizeof(msg), "cmd:%s\r\n", text);
+    // HAL_UART_Transmit(&huart2, (const uint8_t*)msg, ntlibc_strlen(msg),HAL_MAX_DELAY);
+    // HAL_GPIO_TogglePin(USER_LED_GPIO_Port, USER_LED_Pin);
+  }
+
+  return 0;
+}
+
+
+void HAL_UARTEx_RxEventCallback(UART_HandleTypeDef *huart, uint16_t Size){
+  if(huart->Instance == USART2){
+    static uint8_t tmp[64];
+    if (Size > sizeof(tmp)) Size = sizeof(tmp);
+    memcpy(tmp, UART_Rx_Buffer, Size);
+    vtrecv_execute(&(ntshell.vtrecv), tmp, Size);
+    HAL_UARTEx_ReceiveToIdle_DMA(&huart2, UART_Rx_Buffer, sizeof(UART_Rx_Buffer));
+  }
+}
+
+static int CMD_help(int argc, char **argv){
+  UNUSED(argc);
+  UNUSED(argv);
+  
+  snprintf((char*)UART_Tx_Buffer, sizeof(UART_Tx_Buffer), "[Command List]%s", ntshell_newline(&ntshell));
+  HAL_UART_Transmit(&huart2, UART_Tx_Buffer, ntlibc_strlen((const char*)UART_Tx_Buffer), HAL_MAX_DELAY);
+
+  for (uint32_t i=0;i<sizeof(CommandList)/sizeof(CommandList[0]);i++){
+    if(!CommandList[i].isHidden){
+      snprintf((char*)UART_Tx_Buffer, sizeof(UART_Tx_Buffer), "# %s:\t%s%s", CommandList[i].cmd, CommandList[i].description, ntshell_newline(&ntshell));
+      HAL_UART_Transmit(&huart2, UART_Tx_Buffer, ntlibc_strlen((const char*)UART_Tx_Buffer), HAL_MAX_DELAY);
+    }
+  }
+  return 0;
+}
+
+static int CMD_info(int argc, char **argv){
+  UNUSED(argc);
+  UNUSED(argv);
+  snprintf((char*)UART_Tx_Buffer, sizeof(UART_Tx_Buffer), "MPU Freq:%ldHz%s", HAL_RCC_GetHCLKFreq(), ntshell_newline(&ntshell));  
+  HAL_UART_Transmit(&huart2, UART_Tx_Buffer, ntlibc_strlen((const char*)UART_Tx_Buffer), HAL_MAX_DELAY);
+
+  snprintf((char*)UART_Tx_Buffer, sizeof(UART_Tx_Buffer), "HAL Ver :%0x%s", (unsigned int)HAL_GetHalVersion(), ntshell_newline(&ntshell));  
+  HAL_UART_Transmit(&huart2, UART_Tx_Buffer, ntlibc_strlen((const char*)UART_Tx_Buffer), HAL_MAX_DELAY);
+
+  snprintf((char*)UART_Tx_Buffer, sizeof(UART_Tx_Buffer), "Rev Ver :%0x%s", (unsigned int)HAL_GetREVID(), ntshell_newline(&ntshell));  
+  HAL_UART_Transmit(&huart2, UART_Tx_Buffer, ntlibc_strlen((const char*)UART_Tx_Buffer), HAL_MAX_DELAY);
+
+  return 0;
+}
+
+static int CMD_CRLF(int argc, char **argv){
+  if(argc==2){
+    if(ntlibc_strncmp(argv[1], "CRLF", 5)==0)       {ntshell_crlf(&ntshell, true, true); return 0;}
+    else if  (ntlibc_strncmp(argv[1], "LF", 5)==0)  {ntshell_crlf(&ntshell, false, true); return 0;}
+  }
+    snprintf((char*)UART_Tx_Buffer, sizeof(UART_Tx_Buffer), "CRLF [LF|CRLF]%s", ntshell_newline(&ntshell));
+    HAL_UART_Transmit(&huart2, UART_Tx_Buffer, ntlibc_strlen((const char*)UART_Tx_Buffer), HAL_MAX_DELAY);
+    return -1;
+}
+
+static int CMD_EEPROM_Read(int argc, char **argv){
+  if(argc ==2){
+    uint32_t Address = strtol(argv[1], NULL, 16);;
+      if(Address >= EEPROM_START_ADDRESS && Address < EEPROM_START_ADDRESS+0x2000){
+      uint32_t val = *(volatile uint32_t*)Address;
+      snprintf((char*)UART_Tx_Buffer, sizeof(UART_Tx_Buffer), "0x%08X 0x%08X %s", (unsigned int)Address, (unsigned int)val, ntshell_newline(&ntshell));
+      HAL_UART_Transmit(&huart2, UART_Tx_Buffer, ntlibc_strlen((const char*)UART_Tx_Buffer), HAL_MAX_DELAY);
+    } 
+    return 0;
+  }
+  return -1;
+}
+
+static int CMD_AS33772S_GetSRCPDOList(int argc, char **argv){
+  bool IsValid = true;
+  if(argc == 2){
+    if(ntlibc_strncmp(argv[1], "?", 2)==0){
+      snprintf((char*)UART_Tx_Buffer, sizeof(UART_Tx_Buffer), "Num of Source PDOs %d%s", ap33772s.FindPDO_Nums(), ntshell_newline(&ntshell));
+      HAL_UART_Transmit(&huart2, UART_Tx_Buffer, ntlibc_strlen((const char*)UART_Tx_Buffer), HAL_MAX_DELAY);
+    }else{
+      uint32_t Itr = strtol(argv[1], NULL, 10);
+      for(uint32_t i=0;i<Itr;i++){
+        uint32_t VoltCoef = (i<7) ? 1 : 2; // Index:8-14 is EPR(200mV step)
+        if(ap33772s.SrcPDO_List[i].Type==AP33772S::ADPO) {
+          snprintf((char*)UART_Tx_Buffer, sizeof(UART_Tx_Buffer), "[%2d]\tAPDO\t%3d-%3d [100mV], %3d[mA]%s",i, 
+            (ap33772s.SrcPDO_List[i].VoltageMax==1)? 33:50, 
+            ap33772s.SrcPDO_List[i].VoltageMax, 
+            ap33772s.SrcPDO_List[i].MaxCurrent(ap33772s.SrcPDO_List[i].CurrentMax), 
+            ntshell_newline(&ntshell)
+          );
+        HAL_UART_Transmit(&huart2, UART_Tx_Buffer, ntlibc_strlen((const char*)UART_Tx_Buffer), HAL_MAX_DELAY);
+        }else {
+          snprintf((char*)UART_Tx_Buffer, sizeof(UART_Tx_Buffer), "[%2d]\tFixed\t%7d [100mV], %3d[mA]%s",
+            i, 
+            ap33772s.SrcPDO_List[i].VoltageMax * VoltCoef, 
+            ap33772s.SrcPDO_List[i].MaxCurrent(ap33772s.SrcPDO_List[i].CurrentMax), 
+            ntshell_newline(&ntshell)
+          );
+        HAL_UART_Transmit(&huart2, UART_Tx_Buffer, ntlibc_strlen((const char*)UART_Tx_Buffer), HAL_MAX_DELAY);
+        
+        }
+      }
+    }
+  }
+  return -1;
+}
 /* USER CODE END 0 */
 
 /**
@@ -106,33 +294,72 @@ int main(void)
   MX_DMA_Init();
   MX_I2C1_Init();
   MX_USART2_UART_Init();
+  MX_FLASH_Init();
   /* USER CODE BEGIN 2 */
 
   HAL_GPIO_WritePin(LD08_GPIO_Port, LD08_Pin, GPIO_PIN_RESET);
   HAL_GPIO_WritePin(LD11_GPIO_Port, LD11_Pin, GPIO_PIN_RESET);
 
-  uint32_t value = 0;
-  uint8_t des = 1;
+
   uint8_t buf = 0;
   uint8_t vreq[2] ={0};
 
   // USB-Cコネクタを刺して起動した場合に何故か1回だとうまくいかないため2回発行する
   for(int ii=0;ii<2;ii++){
-    HAL_Delay(250);
+    HAL_Delay(300);
     ap33772s.Read_SrcPDO();
     ap33772s.SetVout(false);
     ap33772s.WaitResponse(15);
   }
-  uint8_t PDOIdx = ap33772s.FindPDO_Fixed(90, 1000, AP33772S::MaxWatt);
-  for(int ii=0;ii<2;ii++){
-    buf = ap33772s.ReqFixed(PDOIdx, 90, 1000);
-    ap33772s.WaitResponse();
-  }
+
+  Request_PDO_T Request_PDO={75, 175, 2000};
+  uint8_t PDOIdx = 0xff;
+  uint16_t ADPOVolatge100mV = 0;
+  bool IsAPDO = true;
+  PDOIdx = ap33772s.FindPDO_ADPO(Request_PDO.Req_MinVoltage, Request_PDO.Req_MaxVoltage, Request_PDO.Req_Current, AP33772S::MaxWatt, ADPOVolatge100mV);
+  if(PDOIdx == 0xff){
+    IsAPDO = false;
+    PDOIdx = ap33772s.FindPDO_Fixed(Request_PDO.Req_MinVoltage, Request_PDO.Req_MaxVoltage, Request_PDO.Req_Current, AP33772S::MaxWatt);
+  } 
   
-  ap33772s.SetVout(true);
-  ap33772s.WaitResponse(15);
-  HAL_I2C_Mem_Read(&hi2c1, 0x52<<1, AP33772S::REG::PD_MSGRLT>>8, 1, &buf, 1, 100);
-  HAL_I2C_Mem_Read(&hi2c1, 0x52<<1, AP33772S::REG::VREQ>>8, 1, vreq, 2, 100);
+  if(PDOIdx != 0xff){
+    for(int ii=0;ii<2;ii++){
+      if(IsAPDO) buf = ap33772s.ReqAPDO(PDOIdx, ADPOVolatge100mV, Request_PDO.Req_Current);
+      else       buf = ap33772s.ReqFixed(PDOIdx, Request_PDO.Req_Current);
+      
+      ap33772s.WaitResponse();
+    }
+
+    ap33772s.SetVout(true);
+    ap33772s.WaitResponse(15);
+    HAL_GPIO_TogglePin(LD11_GPIO_Port, LD11_Pin);
+  }
+
+  
+
+  // HAL_I2C_Mem_Read(&hi2c1, 0x52<<1, AP33772S::REG::PD_MSGRLT>>8, 1, &buf, 1, 100);
+  // HAL_I2C_Mem_Read(&hi2c1, 0x52<<1, AP33772S::REG::VREQ>>8, 1, vreq, 2, 100);
+
+  HAL_UARTEx_ReceiveToIdle_DMA(&huart2, UART_Rx_Buffer, sizeof(UART_Rx_Buffer));
+  ntshell_init(
+      &ntshell,
+      NULL,
+      func_write,
+      func_callback,
+      (void *)&ntshell);
+      
+  ntshell_crlf(&ntshell, true, true);
+
+  snprintf((char*)UART_Tx_Buffer, sizeof(UART_Tx_Buffer), "%sAP33772S-SinkEval Rev:%s%s", ntshell_newline(&ntshell), GIT_HASH, ntshell_newline(&ntshell));
+  HAL_UART_Transmit(&huart2, UART_Tx_Buffer, ntlibc_strlen((const char*)UART_Tx_Buffer), HAL_MAX_DELAY);
+
+  snprintf((char*)UART_Tx_Buffer, sizeof(UART_Tx_Buffer), "# Copyright 2025 rooty19 (https://github.com/rooty19)%s", ntshell_newline(&ntshell), ntshell_newline(&ntshell));
+  HAL_UART_Transmit(&huart2, UART_Tx_Buffer, ntlibc_strlen((const char*)UART_Tx_Buffer), HAL_MAX_DELAY);
+
+  snprintf((char*)UART_Tx_Buffer, sizeof(UART_Tx_Buffer), "# Type \"CRLF [LF|CRLF]\" to change EOL.%s", ntshell_newline(&ntshell));
+  HAL_UART_Transmit(&huart2, UART_Tx_Buffer, ntlibc_strlen((const char*)UART_Tx_Buffer), HAL_MAX_DELAY);
+
+  ntshell_set_prompt(&ntshell, "> ");
 
   /* USER CODE END 2 */
 
@@ -140,26 +367,7 @@ int main(void)
   /* USER CODE BEGIN WHILE */
   int cc = 0;
   char msg[32] = {0};
-  while (1)
-  {
-    sprintf(msg, "STM32 uart %0d", cc);
-    // HAL_I2C_Mem_Read(&hi2c1, 0x52<<1, AP33772S::REG::PD_MSGRLT>>8, 1, &buf, AP33772S::REG::PD_MSGRLT&0xff, 100);
-    HAL_UART_Transmit(&huart2, (uint8_t*)msg, 32, 25);
-    HAL_Delay(1000);
-  //   bool MatchFlg = true;
-  //   for(uint32_t ii=0;ii<16/sizeof(uint32_t);ii++) mb85rc04.write(ii*sizeof(ii), &ii, sizeof(ii));
-      
-  //  for(uint32_t ii=0;ii<16/sizeof(uint32_t);ii++){
-  //     mb85rc04.read(ii*4, &buf, sizeof(buf));
-  //     if(ii!=buf) MatchFlg = false;
-  //   }
-    // if(MatchFlg) HAL_GPIO_TogglePin(LD08_GPIO_Port, LD08_Pin);
-  //   HAL_GPIO_TogglePin(LD11_GPIO_Port, LD11_Pin);
-  //   HAL_Delay(50);
-
-    //0b0000'0000'0110'0100
-    //0b0000'0001'0110'0100
-    // HAL_Delay(100);
+  while (1){
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
@@ -203,6 +411,35 @@ void SystemClock_Config(void)
   {
     Error_Handler();
   }
+}
+
+/**
+  * @brief FLASH Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_FLASH_Init(void)
+{
+
+  /* USER CODE BEGIN FLASH_Init 0 */
+
+  /* USER CODE END FLASH_Init 0 */
+
+  /* USER CODE BEGIN FLASH_Init 1 */
+
+  /* USER CODE END FLASH_Init 1 */
+  if (HAL_FLASH_Unlock() != HAL_OK)
+  {
+    Error_Handler();
+  }
+  if (HAL_FLASH_Lock() != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN FLASH_Init 2 */
+
+  /* USER CODE END FLASH_Init 2 */
+
 }
 
 /**

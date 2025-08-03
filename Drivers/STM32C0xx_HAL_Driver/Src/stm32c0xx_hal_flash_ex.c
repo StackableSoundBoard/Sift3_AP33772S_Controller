@@ -455,6 +455,7 @@ void HAL_FLASHEx_ForceFlashEmpty(uint32_t FlashEmpty)
   */
 void HAL_FLASHEx_EnableSecMemProtection(uint32_t Bank)
 {
+  UNUSED(Bank);
   assert_param(IS_FLASH_BANK(Bank));
   FLASH->CR |= FLASH_CR_SEC_PROT;
 }
