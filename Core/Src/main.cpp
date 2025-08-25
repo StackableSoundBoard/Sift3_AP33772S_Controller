@@ -1,20 +1,15 @@
 /* USER CODE BEGIN Header */
 /**
   ******************************************************************************
-  * @file           : main.c
+  * @file           : main.cpp
   * @brief          : Main program body
   ******************************************************************************
   * @attention
   *
-  * Copyright (c) 2025 STMicroelectronics.
-  * All rights reserved.
-  *
-  * This software is licensed under terms that can be found in the LICENSE file
-  * in the root directory of this software component.
-  * If no LICENSE file comes with this software, it is provided AS-IS.
-  *
+  * Copyright (c) 2025 StackableSoundBoard project.
+  * All rights reserved, Released under the MIT license 
   ******************************************************************************
-  */
+*/
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
@@ -64,7 +59,7 @@ typedef struct{
 
 uint8_t UART_Rx_Buffer[64] = {0};
 uint8_t UART_Tx_Buffer[64] = {0};
-
+int     RequestedPDOIdx = 0xff;
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -228,7 +223,6 @@ static int CMD_EEPROM_Read(int argc, char **argv){
 }
 
 static int CMD_AS33772S_GetSRCPDOList(int argc, char **argv){
-  bool IsValid = true;
   if(argc == 2){
     if(ntlibc_strncmp(argv[1], "?", 2)==0){
       snprintf((char*)UART_Tx_Buffer, sizeof(UART_Tx_Buffer), "Num of Source PDOs %d%s", ap33772s.FindPDO_Nums(), ntshell_newline(&ntshell));
@@ -236,20 +230,22 @@ static int CMD_AS33772S_GetSRCPDOList(int argc, char **argv){
     }else{
       uint32_t Itr = strtol(argv[1], NULL, 10);
       for(uint32_t i=0;i<Itr;i++){
-        uint32_t VoltCoef = (i<7) ? 1 : 2; // Index:8-14 is EPR(200mV step)
+        uint32_t VoltCoef = ((i>=7)&ap33772s.EPRStatus()) ? 2 : 1; // Index:8-14 is EPR(200mV step)
         if(ap33772s.SrcPDO_List[i].Type==AP33772S::ADPO) {
-          snprintf((char*)UART_Tx_Buffer, sizeof(UART_Tx_Buffer), "[%2d]\tAPDO\t%3d-%3d [100mV], %3d[mA]%s",i, 
+          snprintf((char*)UART_Tx_Buffer, sizeof(UART_Tx_Buffer), "[%2ld]\tAPDO\t%3d-%3d [100mV], %3d[mA] %s%s",i, 
             (ap33772s.SrcPDO_List[i].VoltageMax==1)? 33:50, 
             ap33772s.SrcPDO_List[i].VoltageMax, 
             ap33772s.SrcPDO_List[i].MaxCurrent(ap33772s.SrcPDO_List[i].CurrentMax), 
+            (i==RequestedPDOIdx)?"*":"",
             ntshell_newline(&ntshell)
           );
         HAL_UART_Transmit(&huart2, UART_Tx_Buffer, ntlibc_strlen((const char*)UART_Tx_Buffer), HAL_MAX_DELAY);
         }else {
-          snprintf((char*)UART_Tx_Buffer, sizeof(UART_Tx_Buffer), "[%2d]\tFixed\t%7d [100mV], %3d[mA]%s",
+          snprintf((char*)UART_Tx_Buffer, sizeof(UART_Tx_Buffer), "[%2ld]\tFixed\t%7d [100mV], %3d[mA]%s%s",
             i, 
             ap33772s.SrcPDO_List[i].VoltageMax * VoltCoef, 
             ap33772s.SrcPDO_List[i].MaxCurrent(ap33772s.SrcPDO_List[i].CurrentMax), 
+            (i==RequestedPDOIdx)?"*":"",
             ntshell_newline(&ntshell)
           );
         HAL_UART_Transmit(&huart2, UART_Tx_Buffer, ntlibc_strlen((const char*)UART_Tx_Buffer), HAL_MAX_DELAY);
@@ -300,26 +296,25 @@ int main(void)
   HAL_GPIO_WritePin(LD08_GPIO_Port, LD08_Pin, GPIO_PIN_RESET);
   HAL_GPIO_WritePin(LD11_GPIO_Port, LD11_Pin, GPIO_PIN_RESET);
 
-
   uint8_t buf = 0;
   uint8_t vreq[2] ={0};
 
   // USB-Cコネクタを刺して起動した場合に何故か1回だとうまくいかないため2回発行する
   for(int ii=0;ii<2;ii++){
     HAL_Delay(300);
-    ap33772s.Read_SrcPDO();
+    ap33772s.Read_SrcPDO(true);
     ap33772s.SetVout(false);
     ap33772s.WaitResponse(15);
   }
 
-  Request_PDO_T Request_PDO={75, 175, 2000};
+  Request_PDO_T Request_PDO={65, 75, 2000};
   uint8_t PDOIdx = 0xff;
   uint16_t ADPOVolatge100mV = 0;
   bool IsAPDO = true;
-  PDOIdx = ap33772s.FindPDO_ADPO(Request_PDO.Req_MinVoltage, Request_PDO.Req_MaxVoltage, Request_PDO.Req_Current, AP33772S::MaxWatt, ADPOVolatge100mV);
+  PDOIdx = ap33772s.FindPDO_ADPO(Request_PDO.Req_MinVoltage, Request_PDO.Req_MaxVoltage, Request_PDO.Req_Current, AP33772S::MinWatt, ADPOVolatge100mV);
   if(PDOIdx == 0xff){
     IsAPDO = false;
-    PDOIdx = ap33772s.FindPDO_Fixed(Request_PDO.Req_MinVoltage, Request_PDO.Req_MaxVoltage, Request_PDO.Req_Current, AP33772S::MaxWatt);
+    PDOIdx = ap33772s.FindPDO_Fixed(Request_PDO.Req_MinVoltage, Request_PDO.Req_MaxVoltage, Request_PDO.Req_Current, AP33772S::MinWatt);
   } 
   
   if(PDOIdx != 0xff){
@@ -329,13 +324,14 @@ int main(void)
       
       ap33772s.WaitResponse();
     }
-
+    RequestedPDOIdx = ap33772s.RequestedPDO_Idx();
     ap33772s.SetVout(true);
     ap33772s.WaitResponse(15);
     HAL_GPIO_TogglePin(LD11_GPIO_Port, LD11_Pin);
+  }else {
+    // Cannot find PDO, status=fail
+    HAL_GPIO_TogglePin(LD08_GPIO_Port, LD08_Pin);
   }
-
-  
 
   // HAL_I2C_Mem_Read(&hi2c1, 0x52<<1, AP33772S::REG::PD_MSGRLT>>8, 1, &buf, 1, 100);
   // HAL_I2C_Mem_Read(&hi2c1, 0x52<<1, AP33772S::REG::VREQ>>8, 1, vreq, 2, 100);

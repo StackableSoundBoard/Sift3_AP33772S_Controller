@@ -1,9 +1,19 @@
+/**
+* @file AP33772S.cpp
+* @author StackableSoundBoard project. (https://github.com/StackableSoundBoard)
+* @brief Library source for AP33772 USB-PD controller
+* @version v1.0
+* @date 
+* 
+* @copyright Copyright (c) Aug, 2025, Released under the MIT license 
+* 
+*/
 #include "AP33772S.hpp"
-#include <cstdint>
 
 namespace AP33772S {
 
-  void AP33772S_C::Read_SrcPDO(){
+  void AP33772S_C::Read_SrcPDO(bool EPR_Flag_){
+    EPR_Flag = EPR_Flag_;
     HAL_I2C_Mem_Read(hi2c, AP33772S_Base_Addr, REG::SRCPDO>>8, 1, (uint8_t*)SrcPDO_List, REG::SRCPDO&0xff, 10);
     for(uint32_t i=0;i<sizeof(SrcPDO_List)/sizeof((SrcPDO_List[0]));i++){
       if(SrcPDO_List[i].Detect) SrcPDO_Num++;
@@ -35,8 +45,9 @@ namespace AP33772S {
   uint8_t AP33772S_C::FindPDO_Fixed(uint16_t Req_MinVoltage100mV_, uint16_t Req_MaxVoltage100mV_, uint16_t ReqCurrentmA_, PDOFind_Mode Mode){
     uint8_t WattIdx = 0xff;
     for(uint16_t ReqVoltage100mV_=Req_MinVoltage100mV_; ReqVoltage100mV_<=Req_MaxVoltage100mV_; ReqVoltage100mV_++){
-      for(int ii=0;ii<8;ii++){
-        if(SrcPDO_List[ii].Eval_FixedPDO(ReqVoltage100mV_, ReqCurrentmA_)){
+      for(int ii=0;ii<14;ii++){
+        uint16_t VoltCoef = ((ii>=7)&EPR_Flag)? 2:1; // if EPR Voltage step is 200mV
+        if(SrcPDO_List[ii].Eval_FixedPDO(ReqVoltage100mV_, ReqCurrentmA_, VoltCoef)){
           uint32_t CurrentWatt = SrcPDO_List[ii].MaxCurrent(SrcPDO_List[ii].CurrentMax)*SrcPDO_List[ii].VoltageMax;
           uint32_t OldWatt     = SrcPDO_List[WattIdx].MaxCurrent(SrcPDO_List[WattIdx].CurrentMax)*SrcPDO_List[WattIdx].VoltageMax;
           if(WattIdx==0xff) WattIdx = ii;
@@ -54,7 +65,8 @@ namespace AP33772S {
     ReqVoltage100mV_ = 0;
     for(uint16_t ReqVoltage100mV=Req_MinVoltage100mV_; ReqVoltage100mV<=Req_MaxVoltage100mV_; ReqVoltage100mV++){
       for(int ii=0;ii<14;ii++){
-        if(SrcPDO_List[ii].Eval_ADPO(ReqVoltage100mV, ReqCurrentmA_)){
+        uint16_t VoltCoef = ((ii>=8)&EPR_Flag)? 2:1; // if EPR Voltage step is 200mV
+        if(SrcPDO_List[ii].Eval_ADPO(ReqVoltage100mV, ReqCurrentmA_, VoltCoef)){
           uint32_t      CurrentWatt = SrcPDO_List[ii].MaxCurrent(SrcPDO_List[ii].CurrentMax)*ReqVoltage100mV;
           if(WattIdx!=0xff) OldWatt = SrcPDO_List[WattIdx].MaxCurrent(SrcPDO_List[WattIdx].CurrentMax)*ReqVoltage100mV;
           if(WattIdx==0xff)                               {WattIdx = ii; ReqVoltage100mV_ = ReqVoltage100mV;}
@@ -76,6 +88,7 @@ namespace AP33772S {
     
     HAL_I2C_Mem_Write(hi2c, AP33772S_Base_Addr, REG::PD_REQMSG>>8, 1, (uint8_t*)&ReqPDO_MSG, REG::PD_REQMSG&0xff, 10);
     HAL_I2C_Mem_Read(hi2c, AP33772S_Base_Addr, REG::PD_MSGRLT>>8, 1, &res, REG::PD_MSGRLT&0xff, 100);
+    RequestedPDOIdx = SRCPDOIdx_;
     return res;
   }
   
@@ -88,10 +101,17 @@ namespace AP33772S {
     
     HAL_I2C_Mem_Write(hi2c, AP33772S_Base_Addr, REG::PD_REQMSG>>8, 1, (uint8_t*)&ReqPDO_MSG, REG::PD_REQMSG&0xff, 10);
     HAL_I2C_Mem_Read(hi2c, AP33772S_Base_Addr, REG::PD_MSGRLT>>8, 1, &res, REG::PD_MSGRLT&0xff, 100);
+    RequestedPDOIdx = SRCPDOIdx_;
     return res;
   }
   
   
   int AP33772S_C::FindPDO_Nums(){return SrcPDO_Num;};
-
+  uint8_t AP33772S_C::RequestedPDO_Idx(){
+    if(LastCMD_Sucess & (RequestedPDOIdx!=0xff)) return RequestedPDOIdx-1;
+    else{
+      RequestedPDOIdx =0xff;
+      return 0xff;
+    }
+  }
 };

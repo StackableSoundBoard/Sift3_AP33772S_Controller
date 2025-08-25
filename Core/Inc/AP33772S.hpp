@@ -1,3 +1,14 @@
+/**
+* @file AP33772S.hpp
+* @author StackableSoundBoard project. (https://github.com/StackableSoundBoard)
+* @brief Library header for AP33772 USB-PD controller
+* @version v1.0
+* @date 
+* 
+* @copyright Copyright (c) Aug, 2025, Released under the MIT license 
+* 
+*/
+
 #pragma once
 #include "stm32c0xx_hal.h"
 #include "stm32c0xx_hal_i2c.h"
@@ -73,11 +84,11 @@ namespace AP33772S {
     };
     uint32_t MaxCurrent(uint16_t currentidx){return currentidx*250+1000;};
 
-    bool Eval_FixedPDO(uint16_t Voltage100mV_, uint32_t CurrentmA_){
-      return (Detect)&(Type==FixedPDO)&(VoltageMax == Voltage100mV_)&(CurrentmA_<=MaxCurrent(CurrentMax));
+    bool Eval_FixedPDO(uint16_t Voltage100mV_, uint32_t CurrentmA_, uint16_t VoltCoef_){
+      return (Detect)&(Type==FixedPDO)&(VoltageMax*VoltCoef_ == Voltage100mV_)&(CurrentmA_<=MaxCurrent(CurrentMax));
     }
 
-    bool Eval_ADPO(uint16_t Voltage100mV_, uint32_t CurrentmA_){
+    bool Eval_ADPO(uint16_t Voltage100mV_, uint32_t CurrentmA_, uint16_t VoltCoef_){
       uint16_t VoltageMin = (PeakCurrent_VoltageMin==1)? 33 : 50;
       return (Detect)&(Type==ADPO)&(VoltageMin<=Voltage100mV_)&&(Voltage100mV_<=VoltageMax)&(CurrentmA_<=MaxCurrent(CurrentMax));
     }
@@ -96,18 +107,21 @@ namespace AP33772S {
       ReqMsg_T ReqPDO_MSG;
       I2C_HandleTypeDef* hi2c;
       bool LastCMD_Sucess = false;
+      bool EPR_Flag;
+      uint8_t RequestedPDOIdx;
 
     public:
       AP33772S_C(I2C_HandleTypeDef *hi2c_){
         hi2c = hi2c_;
         for(int ii=0;ii<14;ii++) SrcPDO_List[ii].Clear();
         SrcPDO_Num = 0;
+        RequestedPDOIdx = 0xff;
       }
 
       SRCPDO_T SrcPDO_List[14];
 
       // AP33772S Function
-      void Read_SrcPDO();
+      void Read_SrcPDO(bool EPR_Flag_);
       void SetVout(bool IsEnable);
 
       // Util function
@@ -119,7 +133,8 @@ namespace AP33772S {
       uint8_t FindPDO_ADPO(uint16_t Req_MinVoltage100mV_, uint16_t Req_MaxVoltage100mV_, uint16_t ReqCurrentmA_, PDOFind_Mode Mode, uint16_t &ReqVoltage100mV_);
       int     FindPDO_Nums();
       uint8_t ReqFixed(uint8_t SRCPDOIdx_,  uint16_t ReqCurrentmA_);
-      uint8_t ReqAPDO(uint8_t SRCPDOIdx_, uint16_t ReqVoltage100mV_, uint16_t ReqCurrentmA_);      
-
+      uint8_t ReqAPDO(uint8_t SRCPDOIdx_, uint16_t ReqVoltage100mV_, uint16_t ReqCurrentmA_);
+      bool    EPRStatus(){return EPR_Flag;};      
+      uint8_t RequestedPDO_Idx();
     };
 }
